@@ -1,0 +1,50 @@
+[
+    {
+        "entity_name": "custome",
+        "description": "demo entity",
+        "fields": [
+            {
+                "field_name": "custome_id",
+                "field_data_type": "AutoPK",
+                "attributes": {}
+            },
+            {
+                "field_name": "customer_name",
+                "field_data_type": "CharacterString",
+                "attributes": {}
+            }
+        ]
+    },
+    {
+        "entity_name": "customer_2",
+        "description": "demo entity",
+        "fields": [
+            {
+                "field_name": "customer_2_id",
+                "field_data_type": "AutoPK",
+                "attributes": {}
+            },
+            {
+                "field_name": "customer_name",
+                "field_data_type": "CharacterString",
+                "attributes": {}
+            }
+        ]
+    },
+    {
+        "entity_name": "customer_3",
+        "description": "demo entity",
+        "fields": [
+            {
+                "field_name": "customer_3_id",
+                "field_data_type": "AutoPK",
+                "attributes": {}
+            },
+            {
+                "field_name": "customer_name",
+                "field_data_type": "CharacterString",
+                "attributes": {}
+            }
+        ]
+    }
+]
