@@ -10,6 +10,11 @@ on:
         description: Generation id for this deploy
         required: true
         type: string
+      branch:
+        description: Branch to deploy
+        required: false
+        default: main
+        type: string
 
 jobs:
   deploy:
@@ -52,6 +57,7 @@ jobs:
 
             PROJECT_SLUG="${{ inputs.project_slug }}"
             GENERATION_ID="${{ inputs.generation_id }}"
+            BRANCH="${{ inputs.branch }}"
 
             if [ -z "${PROJECT_SLUG}" ]; then
               echo "Missing required workflow input: project_slug"
@@ -63,6 +69,7 @@ jobs:
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "  Project    : $PROJECT_SLUG"
             echo "  Generation : $GENERATION_ID"
+            echo "  Branch     : $BRANCH"
             echo "  Dir        : $DEPLOY_DIR"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -72,7 +79,7 @@ jobs:
               "$DEPLOY_DIR" \
               "${{ github.repository_owner }}" \
               "$SCRIPTS" \
-              "main")
+              "$BRANCH")
             echo "[prepare] App port: $APP_PORT"
 
             # ── Docker ──────────────────────────────────────────────────
@@ -92,6 +99,7 @@ jobs:
 
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "  Deploy complete!"
-            echo "  URL  : http://${PROJECT_SLUG}.v7ai.org"
-            echo "  Port : $APP_PORT"
+            echo "  Branch : $BRANCH"
+            echo "  URL    : http://${PROJECT_SLUG}.v7ai.org"
+            echo "  Port   : $APP_PORT"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
