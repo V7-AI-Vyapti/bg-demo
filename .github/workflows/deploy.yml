@@ -1,18 +1,9 @@
 name: Project Deploy
-
 on:
   workflow_dispatch:
     inputs:
       project_slug:
         description: Project slug to deploy
-        required: true
-        type: string
-      slot:
-        description: Deployment slot (blue or green)
-        required: true
-        type: string
-      port:
-        description: Host port for this slot
         required: true
         type: string
       generation_id:
@@ -23,87 +14,84 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Deploy generated project via SSH
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Debug secrets
+        run: |
+          echo "Host set? ${{ secrets.VM_HOST != '' }}"
+          echo "Key set? ${{ secrets.SSH_PRIVATE_KEY != '' }}"
+          echo "User: ${{ vars.SSH_USER }}"
+          echo "Port: ${{ vars.SSH_PORT }}"
+
+      - name: Copy scripts to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ vars.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ vars.SSH_PORT }}
+          source: ".github/scripts/*"
+          target: "/tmp/v7ai-scripts"
+          strip_components: 2
+
+      - name: Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ vars.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ vars.SSH_PORT }}
-
           script: |
             set -e
             export PATH="/home/v7aisolution/.nvm/versions/node/v24.14.0/bin:$PATH"
 
-            DEPLOY_BASE="${{ vars.GENERATED_PROJECT_DEPLOY_BASE_DIR }}"
+            SCRIPTS="/tmp/v7ai-scripts"
+            chmod +x "$SCRIPTS"/*.sh
+
             PROJECT_SLUG="${{ inputs.project_slug }}"
-            SLOT="${{ inputs.slot }}"
-            APP_PORT="${{ inputs.port }}"
             GENERATION_ID="${{ inputs.generation_id }}"
 
-            if [ -z "${PROJECT_SLUG}" ] || [ -z "${SLOT}" ] || [ -z "${APP_PORT}" ]; then
-              echo "Missing required workflow inputs (project_slug, slot, port)"
+            if [ -z "${PROJECT_SLUG}" ]; then
+              echo "Missing required workflow input: project_slug"
               exit 1
             fi
 
-            case "${SLOT}" in
-              blue|green) ;;
-              *)
-                echo "Invalid slot=${SLOT}; expected blue or green"
-                exit 1
-                ;;
-            esac
+            DEPLOY_DIR="/home/deploy/vyapti/generated-projects/${PROJECT_SLUG}"
 
-            DEPLOY_DIR="${DEPLOY_BASE%/}/${PROJECT_SLUG}"
-            PLATFORM_SERVICE="platform-${SLOT}"
-            WORKER_SERVICE="background-worker-${SLOT}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  Project    : $PROJECT_SLUG"
+            echo "  Generation : $GENERATION_ID"
+            echo "  Dir        : $DEPLOY_DIR"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-            echo "Deploying ${PROJECT_SLUG} slot=${SLOT} generation=${GENERATION_ID} port=${APP_PORT}"
-            mkdir -p "${DEPLOY_DIR}"
+            # ── Prepare: clone/pull + assign all ports → writes .env.ports ──
+            APP_PORT=$("$SCRIPTS/prepare-deploy.sh" \
+              "$PROJECT_SLUG" \
+              "$DEPLOY_DIR" \
+              "${{ github.repository_owner }}" \
+              "$SCRIPTS" \
+              "main")
+            echo "[prepare] App port: $APP_PORT"
 
-            if [ ! -d "${DEPLOY_DIR}/.git" ]; then
-              git clone "https://github.com/${{ github.repository_owner }}/${PROJECT_SLUG}.git" "${DEPLOY_DIR}"
-            fi
+            # ── Docker ──────────────────────────────────────────────────
+            cd "$DEPLOY_DIR"
+            docker compose \
+              --env-file "$DEPLOY_DIR/.env.ports" \
+              up -d --build
+            echo "[docker] Containers are up"
 
-            cd "${DEPLOY_DIR}"
-            BRANCH="main"
-            git config --global --add safe.directory '*'
-            # Match origin exactly — regenerations may force-push, so pull/merge fails on divergent history.
-            git fetch origin
-            git checkout "${BRANCH}"
-            git reset --hard "origin/${BRANCH}"
-            git clean -fd
+            # ── Nginx ───────────────────────────────────────────────────
+            "$SCRIPTS/setup-nginx.sh" "$PROJECT_SLUG" "$APP_PORT"
 
-            export COMPOSE_PROJECT_NAME="${PROJECT_SLUG}"
-            if [ "${SLOT}" = "blue" ]; then
-              export APP_HOST_PORT_BLUE="${APP_PORT}"
-            else
-              export APP_HOST_PORT_GREEN="${APP_PORT}"
-            fi
-
-            # Bring shared infra + this slot only. Do not tear down the other slot.
-            docker compose up -d --build \
-              postgres redis minio minio-init \
-              "${PLATFORM_SERVICE}" "${WORKER_SERVICE}"
-
-            echo "Waiting for ${PLATFORM_SERVICE} to start"
+            # ── Health check ─────────────────────────────────────────────
+            echo "[health] Waiting 30s for services to initialise..."
             sleep 30
+            "$SCRIPTS/health-check.sh" "$APP_PORT"
 
-            HEALTH_PATH="/api/v1/vulcan/health-check"
-
-            for i in $(seq 1 15); do
-              STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${APP_PORT}${HEALTH_PATH}" || true)
-
-              if [ "$STATUS" = "200" ]; then
-                echo "Health check passed for ${PROJECT_SLUG} slot=${SLOT} generation=${GENERATION_ID}"
-                exit 0
-              fi
-
-              echo "Health check failed (${STATUS}). Retrying in 10 seconds..."
-              sleep 10
-            done
-
-            echo "Deployment failed. Health check did not return 200 for slot=${SLOT} port=${APP_PORT}"
-            exit 1
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  Deploy complete!"
+            echo "  URL  : http://${PROJECT_SLUG}.v7ai.org"
+            echo "  Port : $APP_PORT"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
