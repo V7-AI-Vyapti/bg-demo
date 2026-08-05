@@ -21,13 +21,13 @@ BRANCH="${5:?branch required}"
 mkdir -p "$DEPLOY_DIR"
 if [ ! -d "$DEPLOY_DIR/.git" ]; then
   echo "[git] Cloning ${SLUG}..." >&2
-  git clone "https://github.com/${REPO_OWNER}/${SLUG}.git" "$DEPLOY_DIR"
+  git clone "https://github.com/${REPO_OWNER}/${SLUG}.git" "$DEPLOY_DIR" >&2
 fi
 cd "$DEPLOY_DIR"
 git config --global --add safe.directory '*'
-git fetch origin
-git checkout "$BRANCH"
-git reset --hard "origin/$BRANCH"
+git fetch origin >&2
+git checkout "$BRANCH" >&2
+git reset --hard "origin/$BRANCH" >&2
 touch "$DEPLOY_DIR/.env"
 echo "[git] Up to date on branch: $BRANCH" >&2
 
