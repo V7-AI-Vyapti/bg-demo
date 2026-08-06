@@ -8,8 +8,10 @@ CONF="/etc/nginx/sites-available/${DOMAIN}"
 
 sudo tee "$CONF" > /dev/null <<NGINX
 server {
-    listen 80;
+    listen 443 ssl http2;
     server_name ${DOMAIN};
+    ssl_certificate     /etc/letsencrypt/live/v7ai.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/v7ai.org/privkey.pem;
     location / {
         proxy_pass         http://127.0.0.1:${PORT};
         proxy_set_header   Host              \$host;
