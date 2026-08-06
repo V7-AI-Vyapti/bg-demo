@@ -49,12 +49,17 @@ fi
 echo "[blue-green] New port: $NEW_PORT" >&2
 
 # ── 3. Start both new containers simultaneously ───────────────────────────
+# Network: compose creates a network named <project>_default where project is
+# COMPOSE_PROJECT_NAME (set to the project slug). Containers must join this
+# network to reach postgres, redis, and minio by hostname.
+COMPOSE_NETWORK="${SLUG}_default"
 echo "[blue-green] Starting new platform and background-worker together..." >&2
 docker rm -f "$PLATFORM_NEW" "$WORKER_NEW" 2>/dev/null || true
 
 docker run -d \
   --name "$PLATFORM_NEW" \
   --restart unless-stopped \
+  --network "$COMPOSE_NETWORK" \
   --env-file "$ENV_FILE" \
   --env-file "$ENV_PORTS" \
   -p "${NEW_PORT}:3000" \
@@ -63,6 +68,7 @@ docker run -d \
 docker run -d \
   --name "$WORKER_NEW" \
   --restart unless-stopped \
+  --network "$COMPOSE_NETWORK" \
   --env-file "$ENV_FILE" \
   --env-file "$ENV_PORTS" \
   "$WORKER_IMAGE" \
