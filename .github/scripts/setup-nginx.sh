@@ -28,4 +28,4 @@ NGINX
 sudo ln -sf "$CONF" "/etc/nginx/sites-enabled/${DOMAIN}"
 sudo nginx -t
 sudo systemctl reload nginx
-echo "[nginx] http://${DOMAIN} → 127.0.0.1:${PORT}"
+echo "[nginx] https://${DOMAIN} → 127.0.0.1:${PORT}"
