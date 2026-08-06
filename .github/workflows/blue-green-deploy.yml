@@ -35,13 +35,15 @@ jobs:
       - name: Login GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Set lowercase repo
+      - name: Set lowercase owner
         id: repo
-        run: echo "REPO=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        run: echo "REPO=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Generate tag
         id: vars
-        run: echo "TAG=${{ inputs.branch }}-${{ inputs.generation_id }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        run: |
+          BRANCH_SAFE=$(echo "${{ inputs.branch }}" | tr '/' '-')
+          echo "TAG=${BRANCH_SAFE}-${{ inputs.generation_id }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Clone project repo
         run: |
@@ -54,8 +56,8 @@ jobs:
           docker buildx build \
             --cache-from=type=gha,scope=platform \
             --cache-to=type=gha,mode=max,scope=platform \
-            -t ghcr.io/${{ steps.repo.outputs.REPO }}/platform:${{ steps.vars.outputs.TAG }} \
-            -t ghcr.io/${{ steps.repo.outputs.REPO }}/platform:latest \
+            -t ghcr.io/${{ steps.repo.outputs.REPO }}/${{ inputs.project_slug }}-platform:${{ steps.vars.outputs.TAG }} \
+            -t ghcr.io/${{ steps.repo.outputs.REPO }}/${{ inputs.project_slug }}-platform:latest \
             --push \
             ./project
 
@@ -64,8 +66,8 @@ jobs:
           docker buildx build \
             --cache-from=type=gha,scope=worker \
             --cache-to=type=gha,mode=max,scope=worker \
-            -t ghcr.io/${{ steps.repo.outputs.REPO }}/background-worker:${{ steps.vars.outputs.TAG }} \
-            -t ghcr.io/${{ steps.repo.outputs.REPO }}/background-worker:latest \
+            -t ghcr.io/${{ steps.repo.outputs.REPO }}/${{ inputs.project_slug }}-background-worker:${{ steps.vars.outputs.TAG }} \
+            -t ghcr.io/${{ steps.repo.outputs.REPO }}/${{ inputs.project_slug }}-background-worker:latest \
             --push \
             ./project
 

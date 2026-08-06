@@ -16,8 +16,8 @@ SLUG="${1:?slug required}"
 REPO="${2:?repo required}"
 IMAGE_TAG="${3:?image-tag required}"
 
-PLATFORM_IMAGE="ghcr.io/${REPO}/platform:${IMAGE_TAG}"
-WORKER_IMAGE="ghcr.io/${REPO}/background-worker:${IMAGE_TAG}"
+PLATFORM_IMAGE="ghcr.io/${REPO}/${SLUG}-platform:${IMAGE_TAG}"
+WORKER_IMAGE="ghcr.io/${REPO}/${SLUG}-background-worker:${IMAGE_TAG}"
 
 PLATFORM_CANONICAL="${SLUG}-platform"
 WORKER_CANONICAL="${SLUG}-background-worker"
@@ -27,7 +27,6 @@ WORKER_NEW="${SLUG}-background-worker-new"
 DEPLOY_DIR="/home/deploy/vyapti/generated-projects/${SLUG}"
 ENV_FILE="${DEPLOY_DIR}/.env"
 ENV_PORTS="${DEPLOY_DIR}/.env.ports"
-PORT_MAP="/etc/v7ai/port-map"
 HEALTH_PATH="${HEALTH_PATH:-/api/v1/vulcan/health-check}"
 
 # ── 1. Pull new images ────────────────────────────────────────────────────
@@ -37,7 +36,16 @@ docker pull "$WORKER_IMAGE"
 
 # ── 2. Find a free port ───────────────────────────────────────────────────
 echo "[blue-green] Finding free port..." >&2
-NEW_PORT=$("$SCRIPTS/find-port.sh" "$SLUG" "platform.active")
+NEW_PORT=""
+for PORT in $(seq 4000 6000); do
+  if ss -tlnp | grep -q ":${PORT} "; then continue; fi
+  NEW_PORT="$PORT"
+  break
+done
+if [ -z "$NEW_PORT" ]; then
+  echo "ERROR: no free port found in 4000-6000" >&2
+  exit 1
+fi
 echo "[blue-green] New port: $NEW_PORT" >&2
 
 # ── 3. Start both new containers simultaneously ───────────────────────────
