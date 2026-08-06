@@ -1,4 +1,3 @@
-
 # Standalone compose file for GitHub-hosted project repositories.
 x-generated-app-build: &generated-app-build
   context: .
@@ -25,7 +24,7 @@ x-generated-app-env: &generated-app-env
   AWS_SECRET_ACCESS_KEY: "minioadmin"
   AWS_REGION: "us-east-1"
   FILE_MANAGEMENT_BUCKET_NAME: "vyapti-be"
-  FILE_STORAGE_PUBLIC_BASE_URL: "http://127.0.0.1:9100/vyapti-be"
+  FILE_STORAGE_PUBLIC_BASE_URL: "http://127.0.0.1:${PORT_minio_9000:-9100}/vyapti-be"
   VYAPTI_REPO_ROOT: "/app"
 
 x-generated-app-depends-on: &generated-app-depends-on
@@ -37,14 +36,11 @@ x-generated-app-depends-on: &generated-app-depends-on
     condition: service_completed_successfully
 
 services:
-  # Blue/green app slots share postgres/redis/minio. Deploy workflow brings up
-  # only platform-<slot> + background-worker-<slot> so the idle slot can boot
-  # beside the live one.
-  platform-blue:
+  platform:
     build: *generated-app-build
-    container_name: bg-demo-platform-blue
+    container_name: bg-demo-platform
     ports:
-      - "${APP_HOST_PORT_BLUE:-4100}:3000"
+      - "${PORT_platform_3000:-3000}:3000"
     env_file:
       - .env
     environment: *generated-app-env
@@ -53,36 +49,9 @@ services:
       - ./tmp:/app/tmp
     restart: unless-stopped
 
-  platform-green:
+  background-worker:
     build: *generated-app-build
-    container_name: bg-demo-platform-green
-    ports:
-      - "${APP_HOST_PORT_GREEN:-4100}:3000"
-    env_file:
-      - .env
-    environment: *generated-app-env
-    depends_on: *generated-app-depends-on
-    volumes:
-      - ./tmp:/app/tmp
-    restart: unless-stopped
-
-  background-worker-blue:
-    build: *generated-app-build
-    container_name: bg-demo-background-worker-blue
-    env_file:
-      - .env
-    environment:
-      <<: *generated-app-env
-      GENERATED_PROJECT_RUN_FIXTURES: "false"
-    depends_on: *generated-app-depends-on
-    volumes:
-      - ./tmp:/app/tmp
-    command: ["pnpm", "run", "worker:prod"]
-    restart: unless-stopped
-
-  background-worker-green:
-    build: *generated-app-build
-    container_name: bg-demo-background-worker-green
+    container_name: bg-demo-background-worker
     env_file:
       - .env
     environment:
@@ -131,8 +100,8 @@ services:
     image: "minio/minio:latest"
     container_name: bg-demo-minio
     ports:
-      - "9100:9000"
-      - "9101:9001"
+      - "${PORT_minio_9000:-9000}:9000"
+      - "${PORT_minio_9001:-9001}:9001"
     volumes:
       - minio_data:/data
     environment:
