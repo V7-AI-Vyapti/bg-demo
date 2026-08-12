@@ -27,8 +27,8 @@ HEALTH_PATH="${HEALTH_PATH:-/api/v1/vulcan/health-check}"
 
 # ── 1. Pull images ────────────────────────────────────────────────────────
 echo "[green] Pulling images for tag ${IMAGE_TAG}..." >&2
-docker pull "$PLATFORM_IMAGE"
-docker pull "$WORKER_IMAGE"
+docker pull "$PLATFORM_IMAGE" >&2
+docker pull "$WORKER_IMAGE" >&2
 
 # ── 2. Find a free port in 5000-7000 ──────────────────────────────────────
 echo "[green] Finding free port..." >&2
@@ -46,7 +46,7 @@ docker run --rm \
   --env-file "$ENV_FILE" \
   --env-file "$ENV_PORTS" \
   "$PLATFORM_IMAGE" \
-  npx typeorm migration:run -d dist/core/database/typeorm.config.js 2>/dev/null || echo "[green] Migration finished or no pending migrations." >&2
+  npx typeorm migration:run -d dist/core/database/typeorm.config.js >&2 2>&1 || echo "[green] Migration finished or no pending migrations." >&2
 
 echo "[green] Starting green platform and background-worker..." >&2
 docker rm -f "$PLATFORM_GREEN" "$WORKER_GREEN" 2>/dev/null || true
@@ -58,7 +58,7 @@ docker run -d \
   --env-file "$ENV_FILE" \
   --env-file "$ENV_PORTS" \
   -p "${NEW_PORT}:3000" \
-  "$PLATFORM_IMAGE"
+  "$PLATFORM_IMAGE" >&2
 
 docker run -d \
   --name "$WORKER_GREEN" \
@@ -67,7 +67,7 @@ docker run -d \
   --env-file "$ENV_FILE" \
   --env-file "$ENV_PORTS" \
   "$WORKER_IMAGE" \
-  pnpm run worker:prod
+  pnpm run worker:prod >&2
 
 # ── 4. Health check green platform ────────────────────────────────────────
 echo "[green] Waiting 15s for green containers to initialize..." >&2

@@ -37,8 +37,8 @@ CONF="/etc/nginx/sites-available/${DOMAIN}"
 
 # ── 2. Pull rollback images from GHCR ─────────────────────────────────────
 echo "[rollback] Pulling rollback images for tag ${IMAGE_TAG}..." >&2
-docker pull "$PLATFORM_IMAGE"
-docker pull "$WORKER_IMAGE"
+docker pull "$PLATFORM_IMAGE" >&2
+docker pull "$WORKER_IMAGE" >&2
 
 # ── 1. Delete green container if present ──────────────────────────────────
 echo "[rollback] Cleaning up any existing green containers..." >&2
@@ -62,7 +62,7 @@ docker run -d \
   --env-file "$ENV_FILE" \
   --env-file "$ENV_PORTS" \
   -p "${NEW_PORT}:3000" \
-  "$PLATFORM_IMAGE"
+  "$PLATFORM_IMAGE" >&2
 
 docker run -d \
   --name "$WORKER_GREEN" \
@@ -71,7 +71,7 @@ docker run -d \
   --env-file "$ENV_FILE" \
   --env-file "$ENV_PORTS" \
   "$WORKER_IMAGE" \
-  pnpm run worker:prod
+  pnpm run worker:prod >&2
 
 # ── 5. Health check green platform ────────────────────────────────────────
 echo "[rollback] Waiting 15s for green rollback containers to initialize..." >&2
