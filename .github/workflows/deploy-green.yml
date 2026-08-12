@@ -16,10 +16,6 @@ on:
         required: false
         default: main
         type: string
-      commit_sha:
-        description: Optional specific commit SHA to build/deploy
-        required: false
-        type: string
 
 jobs:
   build:
@@ -46,23 +42,13 @@ jobs:
       - name: Generate tag
         id: vars
         run: |
-          BRANCH_SAFE=$(echo "${{ inputs.branch }}" | tr '/' '-')
-          SHA_VAL="${{ inputs.commit_sha }}"
-          if [ -z "$SHA_VAL" ]; then
-            SHA_VAL="${GITHUB_SHA::7}"
-          else
-            SHA_VAL="${SHA_VAL::7}"
-          fi
-          echo "TAG=${BRANCH_SAFE}-${{ inputs.generation_id }}-${SHA_VAL}" >> $GITHUB_OUTPUT
+          echo "TAG=${{ inputs.generation_id }}" >> $GITHUB_OUTPUT
 
       - name: Clone project repo
         run: |
           git clone --branch "${{ inputs.branch }}" \
             "https://github.com/${{ github.repository_owner }}/${{ inputs.project_slug }}.git" \
             ./project
-          if [ -n "${{ inputs.commit_sha }}" ]; then
-            cd ./project && git checkout "${{ inputs.commit_sha }}"
-          fi
 
       - name: Build & Push platform image
         run: |

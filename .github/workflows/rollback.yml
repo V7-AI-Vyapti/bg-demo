@@ -1,4 +1,4 @@
-name: Direct Rollback (No Clone / No Rebuild)
+name: Direct Rollback by Generation ID
 
 on:
   workflow_dispatch:
@@ -7,8 +7,8 @@ on:
         description: Project slug
         required: true
         type: string
-      image_tag:
-        description: Image tag or commit SHA to rollback to (e.g. main-gen123-a1b2c3d)
+      generation_id:
+        description: Generation ID to rollback to (e.g. gen-1)
         required: true
         type: string
 
@@ -50,7 +50,7 @@ jobs:
             chmod +x "$SCRIPTS"/*.sh
 
             PROJECT_SLUG="${{ inputs.project_slug }}"
-            IMAGE_TAG="${{ inputs.image_tag }}"
+            IMAGE_TAG="${{ inputs.generation_id }}"
             REPO="${{ steps.repo.outputs.REPO }}"
 
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin

@@ -42,8 +42,7 @@ jobs:
       - name: Generate tag
         id: vars
         run: |
-          BRANCH_SAFE=$(echo "${{ inputs.branch }}" | tr '/' '-')
-          echo "TAG=${BRANCH_SAFE}-${{ inputs.generation_id }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          echo "TAG=${{ inputs.generation_id }}" >> $GITHUB_OUTPUT
 
       - name: Clone project repo
         run: |
