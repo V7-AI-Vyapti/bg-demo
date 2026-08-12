@@ -1,4 +1,5 @@
-name: Project Deploy
+name: Initial Infrastructure & Project Deploy
+
 on:
   workflow_dispatch:
     inputs:
@@ -17,18 +18,66 @@ on:
         type: string
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.vars.outputs.TAG }}
+      repo_lower: ${{ steps.repo.outputs.REPO }}
+
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Debug secrets
+      - name: Setup Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Set lowercase owner
+        id: repo
+        run: echo "REPO=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Generate tag
+        id: vars
         run: |
-          echo "Host set? ${{ secrets.VM_HOST != '' }}"
-          echo "Key set? ${{ secrets.SSH_PRIVATE_KEY != '' }}"
-          echo "User: ${{ vars.SSH_USER }}"
-          echo "Port: ${{ vars.SSH_PORT }}"
+          BRANCH_SAFE=$(echo "${{ inputs.branch }}" | tr '/' '-')
+          echo "TAG=${BRANCH_SAFE}-${{ inputs.generation_id }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Clone project repo
+        run: |
+          git clone --branch "${{ inputs.branch }}" \
+            "https://github.com/${{ github.repository_owner }}/${{ inputs.project_slug }}.git" \
+            ./project
+
+      - name: Build & Push platform image
+        run: |
+          docker buildx build \
+            --cache-from=type=gha,scope=platform \
+            --cache-to=type=gha,mode=max,scope=platform \
+            -t ghcr.io/${{ steps.repo.outputs.REPO }}/${{ inputs.project_slug }}-platform:${{ steps.vars.outputs.TAG }} \
+            -t ghcr.io/${{ steps.repo.outputs.REPO }}/${{ inputs.project_slug }}-platform:latest \
+            --push \
+            ./project
+
+      - name: Build & Push background-worker image
+        run: |
+          docker buildx build \
+            --cache-from=type=gha,scope=worker \
+            --cache-to=type=gha,mode=max,scope=worker \
+            -t ghcr.io/${{ steps.repo.outputs.REPO }}/${{ inputs.project_slug }}-background-worker:${{ steps.vars.outputs.TAG }} \
+            -t ghcr.io/${{ steps.repo.outputs.REPO }}/${{ inputs.project_slug }}-background-worker:latest \
+            --push \
+            ./project
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Copy scripts to server
         uses: appleboy/scp-action@v0.1.7
@@ -41,7 +90,7 @@ jobs:
           target: "/tmp/v7ai-scripts"
           strip_components: 2
 
-      - name: Deploy
+      - name: Deploy Infrastructure & Green Container
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
@@ -58,48 +107,31 @@ jobs:
             PROJECT_SLUG="${{ inputs.project_slug }}"
             GENERATION_ID="${{ inputs.generation_id }}"
             BRANCH="${{ inputs.branch }}"
-
-            if [ -z "${PROJECT_SLUG}" ]; then
-              echo "Missing required workflow input: project_slug"
-              exit 1
-            fi
+            IMAGE_TAG="${{ needs.build.outputs.image_tag }}"
+            REPO="${{ needs.build.outputs.repo_lower }}"
 
             DEPLOY_DIR="/home/deploy/vyapti/generated-projects/${PROJECT_SLUG}"
 
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  Project    : $PROJECT_SLUG"
-            echo "  Generation : $GENERATION_ID"
-            echo "  Branch     : $BRANCH"
-            echo "  Dir        : $DEPLOY_DIR"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # ── Prepare: clone/pull + assign all ports → writes .env.ports ──
+            # ── 1. Prepare environment & assign ports ──────────────────
             APP_PORT=$("$SCRIPTS/prepare-deploy.sh" \
               "$PROJECT_SLUG" \
               "$DEPLOY_DIR" \
               "${{ github.repository_owner }}" \
               "$SCRIPTS" \
               "$BRANCH")
-            echo "[prepare] App port: $APP_PORT"
 
-            # ── Docker ──────────────────────────────────────────────────
+            # ── 2. Start infrastructure (Postgres, Redis, MinIO) ──────
             cd "$DEPLOY_DIR"
-            docker compose \
-              --env-file "$DEPLOY_DIR/.env.ports" \
-              up -d --build
-            echo "[docker] Containers are up"
+            docker compose --env-file "$DEPLOY_DIR/.env.ports" up -d postgres redis minio minio-init
 
-            # ── Nginx ───────────────────────────────────────────────────
-            "$SCRIPTS/setup-nginx.sh" "$PROJECT_SLUG" "$APP_PORT"
+            # ── 3. Deploy backend as Green + Health Check + DB Migration ─
+            GREEN_PORT=$("$SCRIPTS/deploy-green.sh" \
+              "$PROJECT_SLUG" \
+              "$REPO" \
+              "$IMAGE_TAG" \
+              "$SCRIPTS")
 
-            # ── Health check ─────────────────────────────────────────────
-            echo "[health] Waiting 30s for services to initialise..."
-            sleep 30
-            "$SCRIPTS/health-check.sh" "$APP_PORT"
-
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  Deploy complete!"
-            echo "  Branch : $BRANCH"
-            echo "  URL    : http://${PROJECT_SLUG}.v7ai.org"
-            echo "  Port   : $APP_PORT"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            # ── 4. Promote Green to Blue & Switch Nginx (SSL 443) ──────
+            "$SCRIPTS/switch-traffic.sh" "$PROJECT_SLUG" "$GREEN_PORT"

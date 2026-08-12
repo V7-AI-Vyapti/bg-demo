@@ -28,15 +28,19 @@ git config --global --add safe.directory '*'
 git fetch origin >&2
 git checkout "$BRANCH" >&2
 git reset --hard "origin/$BRANCH" >&2
-touch "$DEPLOY_DIR/.env"
+if [ -f "$DEPLOY_DIR/.env.example" ] && [ ! -s "$DEPLOY_DIR/.env" ]; then
+  cp "$DEPLOY_DIR/.env.example" "$DEPLOY_DIR/.env"
+else
+  touch "$DEPLOY_DIR/.env"
+fi
 echo "[git] Up to date on branch: $BRANCH" >&2
 
 # ── Assign free ports for all host-exposed services ───────────────────────
 echo "[port] Assigning ports..." >&2
 
 PORT_platform_3000=$("$SCRIPTS/find-port.sh" "$SLUG" "platform.3000")
-PORT_minio_9000=$("$SCRIPTS/find-port.sh"    "$SLUG" "minio.9000")
-PORT_minio_9001=$("$SCRIPTS/find-port.sh"    "$SLUG" "minio.9001")
+PORT_minio_9000=$("$SCRIPTS/find-port.sh"    "$SLUG" "minio.9000" "$PORT_platform_3000")
+PORT_minio_9001=$("$SCRIPTS/find-port.sh"    "$SLUG" "minio.9001" "$PORT_platform_3000" "$PORT_minio_9000")
 
 # Write .env.ports — read by docker compose via --env-file flag
 # This feeds compose-level interpolation (${PORT_*} in docker-compose.yml)

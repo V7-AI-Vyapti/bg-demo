@@ -1,4 +1,4 @@
-name: Blue Green Deploy
+name: Deploy Green Container
 
 on:
   workflow_dispatch:
@@ -15,6 +15,10 @@ on:
         description: Branch to deploy
         required: false
         default: main
+        type: string
+      commit_sha:
+        description: Optional specific commit SHA to build/deploy
+        required: false
         type: string
 
 jobs:
@@ -43,13 +47,22 @@ jobs:
         id: vars
         run: |
           BRANCH_SAFE=$(echo "${{ inputs.branch }}" | tr '/' '-')
-          echo "TAG=${BRANCH_SAFE}-${{ inputs.generation_id }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          SHA_VAL="${{ inputs.commit_sha }}"
+          if [ -z "$SHA_VAL" ]; then
+            SHA_VAL="${GITHUB_SHA::7}"
+          else
+            SHA_VAL="${SHA_VAL::7}"
+          fi
+          echo "TAG=${BRANCH_SAFE}-${{ inputs.generation_id }}-${SHA_VAL}" >> $GITHUB_OUTPUT
 
       - name: Clone project repo
         run: |
           git clone --branch "${{ inputs.branch }}" \
             "https://github.com/${{ github.repository_owner }}/${{ inputs.project_slug }}.git" \
             ./project
+          if [ -n "${{ inputs.commit_sha }}" ]; then
+            cd ./project && git checkout "${{ inputs.commit_sha }}"
+          fi
 
       - name: Build & Push platform image
         run: |
@@ -90,7 +103,7 @@ jobs:
           target: "/tmp/v7ai-scripts"
           strip_components: 2
 
-      - name: Deploy
+      - name: Deploy Green Container
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
@@ -105,27 +118,13 @@ jobs:
             chmod +x "$SCRIPTS"/*.sh
 
             PROJECT_SLUG="${{ inputs.project_slug }}"
-            GENERATION_ID="${{ inputs.generation_id }}"
-            BRANCH="${{ inputs.branch }}"
             IMAGE_TAG="${{ needs.build.outputs.image_tag }}"
             REPO="${{ needs.build.outputs.repo_lower }}"
 
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  Project    : $PROJECT_SLUG"
-            echo "  Generation : $GENERATION_ID"
-            echo "  Branch     : $BRANCH"
-            echo "  Image tag  : $IMAGE_TAG"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            "$SCRIPTS/blue-green-swap.sh" \
+            "$SCRIPTS/deploy-green.sh" \
               "$PROJECT_SLUG" \
               "$REPO" \
-              "$IMAGE_TAG"
-
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  Deploy complete!"
-            echo "  Project : $PROJECT_SLUG"
-            echo "  Tag     : $IMAGE_TAG"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              "$IMAGE_TAG" \
+              "$SCRIPTS"

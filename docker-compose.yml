@@ -102,7 +102,17 @@ services:
     ports:
       - "${PORT_minio_9000:-9000}:9000"
       - "${PORT_minio_9001:-9001}:9001"
-    volumes:
+    volumes:cat /home/deploy/vyapti/generated-projects/bg-demo/.env | grep -E "DB_HOST|DB_PORT"
+DB_HOST=localhost
+DB_PORT=5433
+deploy@v7aisolution:~/vyapti/generated-projects/bg-demo$ docker compose ps 
+NAME                        IMAGE                       COMMAND                  SERVICE             CREATED       STATUS                 PORTS
+bg-demo-background-worker   bg-demo-background-worker   "/usr/local/bin/gene…"   background-worker   2 hours ago   Up 2 hours             3000/tcp
+bg-demo-minio               minio/minio:latest          "/usr/bin/docker-ent…"   minio               2 hours ago   Up 2 hours (healthy)   0.0.0.0:4004->9000/tcp, [::]:4004->9000/tcp, 0.0.0.0:4005->9001/tcp, [::]:4005->9001/tcp
+bg-demo-platform            bg-demo-platform            "/usr/local/bin/gene…"   platform            2 hours ago   Up 2 hours             0.0.0.0:4000->3000/tcp, [::]:4000->3000/tcp
+bg-demo-postgres-1          postgres:16-alpine          "docker-entrypoint.s…"   postgres            2 hours ago   Up 2 hours (healthy)   5432/tcp
+bg-demo-redis               redis:7-alpine              "docker-entrypoint.s…"   redis               2 hours ago   Up 2 hours (healthy)   6379/tcp
+
       - minio_data:/data
     environment:
       MINIO_ROOT_USER: "minioadmin"
